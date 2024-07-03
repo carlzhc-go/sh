@@ -6,6 +6,25 @@ import (
 	"testing"
 )
 
+func TestPrintf(t *testing.T) {
+	runTest := func(exp string, format string, args ...any) {
+		var res string
+		res, _ = Printf(format, args...)
+		if  res != exp {
+			t.Errorf("Failed on Printf %s %q, expect: '%v', got: '%v'", format, args, exp, res)
+		}
+
+	}
+
+	runTest("", "")
+	runTest("", "", "hello")
+	runTest("hello", "hello")
+	runTest("helloworld", "%s", "hello", "world")
+	runTest("hello%!s(MISSING)", "%s%s", "hello")
+	runTest("hello%", "%s%%", "hello")
+	runTest("helloworld\nworldhello\n", "%s%s\n", "hello", "world", "world", "hello")
+}
+
 func TestCommand(t *testing.T) {
 	cmds := []string{"-v", "cp", "rm"} // unix/msys command 'cp', 'rm'
 	var out []byte
@@ -128,8 +147,6 @@ func TestSubst(t *testing.T) {
 	runTest("hello", ":-1", "hello")
 	runTest("hello", ":0", "hello")
 
-	runTest("hello", ":-1", "hello")
-	runTest("hello", ":0", "hello")
 	runTest("hello", ":2:", "")
 	runTest("hello", ":2:0", "")
 	runTest("hello", ":2:1", "l")
