@@ -3,7 +3,9 @@ package sh
 import (
 	"os"
 	"strings"
+	"slices"
 	"testing"
+	. "github.com/icza/gox/gox"
 )
 
 func TestPrintf(t *testing.T) {
@@ -170,4 +172,25 @@ func TestSubst(t *testing.T) {
 	runTest("hello", "//*", "")
 
 	runTestPanic("hello", ".", "")
+}
+
+func TestDirs(t *testing.T) {
+	stack, err := Dirs(`-c`)
+	if err != nil {
+		t.Errorf("Failed Dirs()")
+	}
+	if len(stack) != 0 {
+		t.Errorf("Failed Dirs(): expect empty stack, got %v", len(stack))
+	}
+}
+
+func TestPushd(t *testing.T) {
+	s, e := Pushd("/tmp")
+	if e != nil {
+		t.Errorf("Failed Pushd: %v", e)
+	}
+
+	if slices.Equal(s, Must(Dirs())) == false {
+		t.Errorf("Failed Pushd: %v", s)
+	}
 }

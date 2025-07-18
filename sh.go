@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"slices"
 
 	. "github.com/icza/gox/gox"
 )
@@ -122,6 +123,7 @@ func Command(args ...string) (result []byte, err error) {
 
 	return result, err
 }
+
 
 /*
 Test evaluate conditional expression.
@@ -540,4 +542,193 @@ func Subst(str, pattern string) (result string) {
 		panic("Unknown pattern: " + pattern)
 	}
 	return
+}
+
+// // Pushd, Popd and Dirs
+// type Stack struct{
+// 	top int
+// 	end int
+// 	stack []string
+// }
+
+func newStack() []string {
+	return make([]string, 0)
+}
+
+// func initStack(s *Stack) *Stack {
+// 	if s == nil {
+// 		s = newStack()
+// 	}
+
+// 	s.stack = make([]string, 10)
+// 	return s
+// }
+
+// func makeStack() *Stack {
+// 	return initStack(nil) // (*Stack)(nil))
+// }
+
+var dirStack = newStack()
+
+/**
+dirs: dirs [-clpv] [+N] [-N]
+    Display directory stack.
+
+    Display the list of currently remembered directories.  Directories
+    find their way onto the list with the `pushd' command; you can get
+    back up through the list with the `popd' command.
+
+    Options:
+      -c        clear the directory stack by deleting all of the elements
+      -l        do not print tilde-prefixed versions of directories relative
+                to your home directory
+      -p        print the directory stack with one entry per line
+      -v        print the directory stack with one entry per line prefixed
+                with its position in the stack
+
+    Arguments:
+      +N        Displays the Nth entry counting from the left of the list
+                shown by dirs when invoked without options, starting with
+                zero.
+
+      -N        Displays the Nth entry counting from the right of the list
+                shown by dirs when invoked without options, starting with
+                zero.
+
+    Exit Status:
+    Returns success unless an invalid option is supplied or an error occurs.
+*/
+func Dirs(args ...string) ([]string, error) {
+	var opt struct{
+		c bool
+		l bool
+		p bool // non-sense, ignored
+		v bool // non-sense, ignored
+	}
+
+	var arg struct{
+		plusN int
+		minusN int
+	}
+
+	for _, a := range args {
+		switch a {
+		case "-c": opt.c = true
+		case "-l": opt.l = true
+		case "-p": opt.p = true
+		case "-v": opt.v = true
+		default:
+			nth := Must(strconv.Atoi(a))
+			if nth >= 0 {
+				arg.plusN = nth
+			} else {
+				arg.minusN = nth
+			}
+		}
+	}
+
+	// clear stack
+	if opt.c {
+		dirStack = newStack()
+		return newStack(), nil
+	}
+
+	if len(dirStack) == 0 {
+		return newStack(), nil
+	}
+
+	result := slices.Clone(dirStack)
+	if opt.l {
+		for i, d := range result {
+			if strings.HasPrefix(d, "~") {
+				home := Must(os.UserHomeDir())
+				result[i] = filepath.Join(home, d[1:])
+			} else {
+				result[i] = d
+			}
+		}
+	}
+
+	// add current dir to the result
+	return append([]string{Must(os.Getwd())}, result...), nil
+}
+
+func Popd(args ...string) {
+
+}
+
+/**
+pushd: pushd [-n] [+N | -N | dir]
+    Add directories to stack.
+
+    Adds a directory to the top of the directory stack, or rotates
+    the stack, making the new top of the stack the current working
+    directory.  With no arguments, exchanges the top two directories.
+
+    Options:
+      -n        Suppresses the normal change of directory when adding
+                directories to the stack, so only the stack is manipulated.
+
+    Arguments:
+      +N        Rotates the stack so that the Nth directory (counting
+                from the left of the list shown by `dirs', starting with
+                zero) is at the top.
+
+      -N        Rotates the stack so that the Nth directory (counting
+                from the right of the list shown by `dirs', starting with
+                zero) is at the top.
+
+      dir       Adds DIR to the directory stack at the top, making it the
+                new current working directory.
+
+    The `dirs' builtin displays the directory stack.
+
+    Exit Status:
+    Returns success unless an invalid argument is supplied or the directory
+    change fails.
+		*/
+func Pushd(optargs ...string) ([]string, error) {
+	var opt struct{
+		n bool
+	}
+
+	if len(optargs) == 0 {
+		if len(dirStack) == 0 {
+			panic("no other directory")
+		}
+	}
+
+	var arg string
+	for _, a := range optargs {
+		switch a {
+		case "-n": opt.n = true
+		default:
+			if arg != "" {
+				panic("too many args")
+			}
+
+			arg = a
+		}
+	}
+
+	nth, err := strconv.Atoi(arg)
+	if err == nil {
+		if nth > 0 {
+			if nth > len(dirStack) {
+				panic(fmt.Errorf("%v: directory stack index out of range", arg))
+			} else if len(dirStack) == 0 {
+				panic(fmt.Errorf("directory stack empty"))
+			} else {
+				stack := append(dirStack[0:len(dirStack)-nth], dirStack[len(dirStack)-nth:]...)
+				Must(1, os.Chdir(dirStack[len(dirStack)-nth]))
+				dirStack = stack
+			}
+
+		} else {
+			//
+		}
+		return Dirs()
+	}
+
+	return Dirs()
 }
