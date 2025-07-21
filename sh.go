@@ -544,30 +544,31 @@ func Subst(str, pattern string) (result string) {
 	return
 }
 
-// // Pushd, Popd and Dirs
-// type Stack struct{
-// 	top int
-// 	end int
-// 	stack []string
-// }
-
-func newStack() []string {
-	return make([]string, 0)
+/* Pushd, Popd and Dirs
+type Stack struct{
+	top int
+	end int
+	stack []string
+}
+*/
+func newStack(args ...string) []string {
+	return args
 }
 
-// func initStack(s *Stack) *Stack {
-// 	if s == nil {
-// 		s = newStack()
-// 	}
+/*
+func initStack(s *Stack) *Stack {
+	if s == nil {
+		s = newStack()
+	}
 
-// 	s.stack = make([]string, 10)
-// 	return s
-// }
+	s.stack = make([]string, 10)
+	return s
+}
 
-// func makeStack() *Stack {
-// 	return initStack(nil) // (*Stack)(nil))
-// }
-
+func makeStack() *Stack {
+	return initStack(nil) // (*Stack)(nil))
+}
+*/
 var dirStack = newStack()
 
 /**
@@ -630,11 +631,7 @@ func Dirs(args ...string) ([]string, error) {
 	// clear stack
 	if opt.c {
 		dirStack = newStack()
-		return newStack(), nil
-	}
-
-	if len(dirStack) == 0 {
-		return newStack(), nil
+		return nil, nil
 	}
 
 	result := slices.Clone(dirStack)
@@ -653,8 +650,88 @@ func Dirs(args ...string) ([]string, error) {
 	return append([]string{Must(os.Getwd())}, result...), nil
 }
 
-func Popd(args ...string) {
+/*
+   popd: popd [-n] [+N | -N]
+    Remove directories from stack.
 
+    Removes entries from the directory stack.  With no arguments, removes
+    the top directory from the stack, and changes to the new top directory.
+
+    Options:
+      -n        Suppresses the normal change of directory when removing
+                directories from the stack, so only the stack is manipulated.
+
+    Arguments:
+      +N        Removes the Nth entry counting from the left of the list
+                shown by `dirs', starting with zero.  For example: `popd +0'
+                removes the first directory, `popd +1' the second.
+
+      -N        Removes the Nth entry counting from the right of the list
+                shown by `dirs', starting with zero.  For example: `popd -0'
+                removes the last directory, `popd -1' the next to last.
+
+    The `dirs' builtin displays the directory stack.
+
+    Exit Status:
+    Returns success unless an invalid argument is supplied or the directory
+    change fails.
+*/
+func Popd(optargs ...string) ([]string, error) {
+	var idx = len(dirStack) // last element of the Dirs()
+	var opt struct{
+		n bool
+		mp bool // true for minus, false for plus (default)
+	}
+
+	if idx == 0 {
+		panic(fmt.Errorf("directory stack empty"))
+	}
+
+	var pnth *int
+	for _, a := range optargs {
+		if a == "-n" {
+			opt.n = true
+		} else {
+			switch a[0] {
+			case '+':
+				opt.mp = false
+			case '-':
+				opt.mp = true
+			default:
+				panic(fmt.Errorf("invalid argument: %v", a))
+			}
+
+			if pnth != nil {
+				panic(fmt.Errorf("too many args"))
+			}
+			n := Must(strconv.Atoi(string(a[1:])))
+			pnth = &n
+		}
+	}
+
+	var nth int
+	if pnth != nil {
+		nth = *pnth
+	}
+
+	if !opt.mp {
+		nth = idx - nth
+	}
+
+	switch {
+	case nth > idx:
+		panic(fmt.Errorf("directory stack index out of range"))
+	case nth == idx:
+		dir := dirStack[nth-1]
+		dirStack = dirStack[0:nth-1]
+		if opt.n {
+			Must(1, os.Chdir(dir))
+		}
+	default: // sl > nth >= 0
+		dirStack = append(dirStack[0:nth], dirStack[nth+1:]...)
+	}
+
+	return Dirs()
 }
 
 /**
@@ -688,47 +765,72 @@ pushd: pushd [-n] [+N | -N | dir]
     change fails.
 		*/
 func Pushd(optargs ...string) ([]string, error) {
+	var sl = len(dirStack)
 	var opt struct{
 		n bool
 	}
 
 	if len(optargs) == 0 {
-		if len(dirStack) == 0 {
+		if sl == 0 {
 			panic("no other directory")
 		}
 	}
 
-	var arg string
+	var arg *string
 	for _, a := range optargs {
 		switch a {
 		case "-n": opt.n = true
 		default:
-			if arg != "" {
+			if arg != nil {
 				panic("too many args")
 			}
-
-			arg = a
+			arg = &a
 		}
 	}
 
-	nth, err := strconv.Atoi(arg)
-	if err == nil {
-		if nth > 0 {
-			if nth > len(dirStack) {
+	if arg == nil {
+		// no arg provided, swap the top 2 dirs in the stack
+		sl := len(dirStack)
+		cwd := Must(os.Getwd())
+		Must(1, os.Chdir(dirStack[sl - 1]))
+		dirStack = append(newStack(cwd), dirStack[1:]...)
+		return Dirs()
+	}
+
+	nth, err := strconv.Atoi(*arg)
+	if err == nil { // +N or -N
+		switch {
+		case nth > 0: // +N
+			if nth > sl {
 				panic(fmt.Errorf("%v: directory stack index out of range", arg))
-			} else if len(dirStack) == 0 {
+			} else if sl == 0 {
 				panic(fmt.Errorf("directory stack empty"))
-			} else {
-				stack := append(dirStack[0:len(dirStack)-nth], dirStack[len(dirStack)-nth:]...)
-				Must(1, os.Chdir(dirStack[len(dirStack)-nth]))
+			} else { // sl >= nth > 0
+				Must(1, os.Chdir(dirStack[sl-nth]))
+				stack := append(dirStack[0:sl-nth], dirStack[sl-nth:]...)
 				dirStack = stack
 			}
-
-		} else {
-			//
+		case nth == 0:
+				return Dirs()
+		default: // -N
+			slices.Reverse(dirStack)
+			nth = 0 - nth
+			if nth > sl {
+				panic(fmt.Errorf("%v: directory stack index out of range", arg))
+			} else if sl == 0 {
+				panic(fmt.Errorf("directory stack empty"))
+			} else { // sl >= nth > 0
+				Must(1, os.Chdir(dirStack[sl-nth]))
+				stack := append(dirStack[0:sl-nth], dirStack[sl-nth:]...)
+				dirStack = stack
+			}
 		}
 		return Dirs()
 	}
 
+	// arg is a path
+	pwd := Must(os.Getwd())
+	Must(1, os.Chdir(*arg))
+	dirStack = append(dirStack, pwd)
 	return Dirs()
 }

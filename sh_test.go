@@ -185,12 +185,62 @@ func TestDirs(t *testing.T) {
 }
 
 func TestPushd(t *testing.T) {
-	s, e := Pushd("/tmp")
+	t.Logf("dirStack = %v\n", dirStack)
+	cwd := Must(os.Getwd())
+	s, e := Pushd("..")
 	if e != nil {
 		t.Errorf("Failed Pushd: %v", e)
 	}
 
-	if slices.Equal(s, Must(Dirs())) == false {
+	t.Logf("dirStack = %v\n", dirStack)
+	if s[len(s)-1] != cwd {
 		t.Errorf("Failed Pushd: %v", s)
 	}
+
+	if slices.Equal(s, Must(Dirs())) == false {
+		t.Errorf("Failed stack after pushd: %v", s)
+	}
+
+
+	// test no args scenario
+	pwd := Must(os.Getwd())
+	s, e = Pushd() // should return to $cwd
+	if e != nil {
+		t.Errorf("Failed Pushd: %v", e)
+	}
+
+	t.Logf("dirStack = %v\n", dirStack)
+	if s[len(s)-1] != pwd {
+		t.Errorf("Failed Pushd: %v", s)
+	}
+
+	if slices.Equal(s, Must(Dirs())) == false {
+		t.Errorf("Failed stack after pushd: %v", s)
+	}
+
+	Dirs("-c")
+	Pushd("..")
+
+	st := Must(Dirs())
+	st1 := Must(Popd())
+	if st[len(st)-2] != st1[len(st1)-1] {
+		t.Errorf("Failed popd: %v -> %v", st, st1)
+	}
+
+	dir1 := Must(os.Getwd())
+	Pushd("..")
+	dir2 := Must(os.Getwd())
+	Pushd()
+	dir1a := Must(os.Getwd())
+	if dir1 != dir1a {
+		t.Errorf("Failed Pushd(): %v != %v", dir1, dir2)
+	}
+
+	Pushd()
+	dir2a := Must(os.Getwd())
+	if dir2 != dir2a {
+		t.Errorf("Failed Pushd(): %v != %v", dir1, dir2)
+	}
+
+
 }
